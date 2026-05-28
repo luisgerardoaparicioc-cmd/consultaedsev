@@ -322,6 +322,21 @@
       gap:12px;
     }
 
+    .detalle-seccion{
+      grid-column:1 / -1;
+      margin:14px 0 2px;
+      border-top:10px solid var(--vino);
+      background:linear-gradient(90deg,var(--vino),var(--vino-oscuro));
+      color:white;
+      text-align:center;
+      text-transform:uppercase;
+      font-weight:900;
+      letter-spacing:.7px;
+      border-radius:14px;
+      padding:12px 16px;
+      box-shadow:0 8px 18px rgba(155,11,79,.13);
+    }
+
     .detalle-card{
       background:#fff;
       border:1px solid #d7dddd;
@@ -403,6 +418,7 @@
       .page{display:none !important;}
       #paginaDetalle{display:block !important;}
       .detalle-grid{grid-template-columns:repeat(2, 1fr); gap:7px;}
+      .detalle-seccion{padding:6px; font-size:11px; border-top-width:5px; box-shadow:none;}
       .detalle-card{break-inside:avoid; padding:7px; min-height:auto;}
       .detalle-card .campo-nombre{font-size:10px;}
       .detalle-card .campo-valor{font-size:11px;}
@@ -439,7 +455,7 @@
 
       <section class="page active" id="paginaLogin">
         <h2 class="section-title">Acceso de consulta</h2>
-        <p class="intro">Ingrese el usuario y contraseña del turno correspondiente. La información se muestra únicamente para consulta y no permite modificar registros. El usuario y contraseña se validan desde Apps Script.</p>
+        <p class="intro">Ingrese el usuario y contraseña del turno correspondiente. La información se muestra únicamente para consulta y no permite modificar registros.</p>
         <div class="grupo">
           <div class="grid">
             <div class="campo col-6">
@@ -451,7 +467,6 @@
               <input type="password" id="contrasena" autocomplete="current-password" placeholder="Contraseña del turno" />
             </div>
           </div>
-          <div class="credencial">Usuarios autorizados: matutino y vespertino. El acceso se valida en Apps Script en cada consulta.</div>
         </div>
         <div class="acciones">
           <span></span>
@@ -525,7 +540,7 @@
     </main>
 
     <footer>
-      Sistema de consulta EDSEV Secundaria. La información se obtiene desde Google Sheets mediante Google Apps Script y se presenta únicamente en modo lectura.
+      Sistema de consulta EDSEV Secundaria. Autor: Profr. LGAC
     </footer>
   </div>
 
@@ -835,14 +850,95 @@
         return;
       }
 
-      datos.forEach(item => {
-        const card = document.createElement('div');
-        card.className = 'detalle-card';
-        card.innerHTML = `
-          <div class="campo-nombre">${escapar(item.columna)} · ${escapar(item.campo)}</div>
-          <div class="campo-valor">${escapar(item.valor || 'SIN REGISTRO')}</div>`;
-        contenedorDetalle.appendChild(card);
+      const secciones = agruparDatosPorSeccion(datos);
+      secciones.forEach(seccion => {
+        const titulo = document.createElement('div');
+        titulo.className = 'detalle-seccion';
+        titulo.textContent = seccion.titulo;
+        contenedorDetalle.appendChild(titulo);
+
+        seccion.items.forEach(item => {
+          const card = document.createElement('div');
+          card.className = 'detalle-card';
+          card.innerHTML = `
+            <div class="campo-nombre">${escapar(item.campo)}</div>
+            <div class="campo-valor">${escapar(item.valor || 'SIN REGISTRO')}</div>`;
+          contenedorDetalle.appendChild(card);
+        });
       });
+    }
+
+    function normalizarCampo(nombre){
+      return String(nombre || '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toUpperCase()
+        .replace(/[^A-Z0-9]+/g, ' ')
+        .trim();
+    }
+
+    function agruparDatosPorSeccion(datos){
+      const reglas = [
+        {
+          titulo: 'Identificación del alumno',
+          inicio: 'PRIMER APELLIDO ALUMNO',
+          fin: 'GRUPO'
+        },
+        {
+          titulo: 'Datos de la escuela',
+          inicio: 'CLAVE DE LA ESCUELA',
+          fin: 'LOCALIDAD'
+        },
+        {
+          titulo: 'Datos del padre, madre o tutor',
+          inicio: 'PRIMER APELLIDO TUTOR',
+          fin: 'CORREO TUTOR'
+        },
+        {
+          titulo: 'Datos de la alumna o alumno',
+          inicio: 'PESO KG',
+          fin: 'SEGURIDAD SOCIAL OTRO'
+        },
+        {
+          titulo: 'Estado General de salud',
+          inicio: 'GRUPO SANGUINEO',
+          fin: 'A LA FECHA HA CONTRAIDO DENGUE'
+        },
+        {
+          titulo: 'Historial sociofamiliar',
+          inicio: 'PERSONAS QUE VIVEN CON EL ALUMNO',
+          fin: 'OTRA ACTIVIDAD'
+        }
+      ];
+
+      const camposNormalizados = datos.map(item => normalizarCampo(item.campo));
+      const secciones = [];
+      let ultimoFin = -1;
+
+      reglas.forEach(regla => {
+        const inicio = camposNormalizados.indexOf(normalizarCampo(regla.inicio));
+        const fin = camposNormalizados.indexOf(normalizarCampo(regla.fin));
+        if(inicio >= 0 && fin >= inicio){
+          secciones.push({
+            titulo: regla.titulo,
+            items: datos.slice(inicio, fin + 1)
+          });
+          ultimoFin = Math.max(ultimoFin, fin);
+        }
+      });
+
+      if(!secciones.length){
+        return [{ titulo: 'Información capturada del alumno', items: datos }];
+      }
+
+      if(ultimoFin < datos.length - 1){
+        const extras = datos.slice(ultimoFin + 1);
+        if(extras.length){
+          secciones.push({ titulo: 'Otros datos capturados', items: extras });
+        }
+      }
+
+      return secciones;
     }
 
     function escapar(valor){
